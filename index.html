@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>日本株 デイトレ再生ゲーム</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--tx:#1b1f24;--sub:#6b7280;--bd:#e3e6ea;--up:#d63a3a;--dn:#1f7ae0;--ac:#0f766e;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#14171a;--card:#1d2126;--tx:#e8eaed;--sub:#9aa1ab;--bd:#2d333a;--up:#ff6b6b;--dn:#5aa2ff;--ac:#2dd4bf;color-scheme:dark}}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;line-height:1.55}
+main{max-width:760px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:0 0 12px}
+.sum{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:8px 0}
+.box,.st,.panel{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:10px}
+.panel{margin-bottom:12px}
+.box small{color:var(--sub);display:block;font-size:12px}.box b{font-size:15px}
+.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}
+button,select{font:inherit;border:1px solid var(--bd);background:var(--card);color:var(--tx);border-radius:8px;padding:7px 12px;cursor:pointer}
+button.p{background:var(--ac);color:#fff;border-color:var(--ac)}
+button:disabled{opacity:.4;cursor:default}
+.st{margin-bottom:8px;padding:12px}
+.r1{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.nm{font-weight:600}.sub{color:var(--sub);font-size:12px}
+.up{color:var(--up)}.dn{color:var(--dn)}
+.r2{display:flex;gap:8px;align-items:center;margin-top:8px}
+input{font:inherit;padding:6px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx)}
+input.q{width:80px}input[type=checkbox]{width:auto}
+.ch{width:100%;height:auto;display:block;margin-top:8px}
+button.sm{padding:3px 8px;font-size:12px}
+button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+.pv{font-size:13px;min-height:20px}
+.msg{font-size:13px;margin:6px 0;min-height:20px}.err{color:var(--up)}
+.day{font-size:18px;font-weight:700}
+.clock{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+.end{background:var(--ac);color:#fff;border-radius:10px;padding:12px;margin-bottom:10px}
+details{font-size:13px;margin-top:10px}summary{cursor:pointer;color:var(--ac)}
+code{background:var(--bg);padding:1px 5px;border-radius:4px;word-break:break-all}
+ul.files{padding-left:18px;margin:6px 0;font-size:13px}
+.note{color:var(--sub);font-size:12px;margin-top:16px}
+</style>
+</head>
+<body>
+<main>
+<h1>🇯🇵 日本株 デイトレ再生ゲーム</h1>
+
+<section id="load" class="panel">
+ <p style="margin-top:0">日本株の日足CSV（日付と終値の列があるもの。始値・高値・安値があればより自然に動きます）を複数選んでください。選んだ期間の相場が、1日あたり約1分で自動的に動きます。</p>
+ <input type="file" id="files" accept=".csv,.txt" multiple onchange="onFiles(this.files)">
+ <button onclick="demo()">デモデータで試す（架空）</button>
+ <div class="msg" id="lmsg"></div>
+ <ul class="files" id="flist"></ul>
+ <div id="startbox" hidden>
+  <div class="bar">開始日 <input type="date" id="sd"> <span class="sub" id="range"></span> <button class="p" onclick="startGame()">ゲーム開始</button></div>
+ </div>
+ <details>
+  <summary>CSVの集め方（Stooq）</summary>
+  <ol>
+   <li>ブラウザで <code>https://stooq.com/q/d/?s=7203.jp&amp;get_apikey</code> を開き、画像の文字を入力します。</li>
+   <li>ページ下部に出る「CSVダウンロードのリンク」（<code>apikey=…</code>入り）を開くと、トヨタの日足CSVが落ちます。</li>
+   <li>リンクの <code>s=7203.jp</code> の部分を <code>6758.jp</code>（ソニー）、<code>7974.jp</code>（任天堂）などに変えて、銘柄ごとに保存します。</li>
+   <li>ファイル名は <code>7203.csv</code> のように証券コードを含めると、銘柄名が自動で入ります。</li>
+  </ol>
+  <p class="sub">Date・Closeの列（日本語ヘッダーの「日付」「終値」も可）があれば、他のサイトのCSVも読み込めます。Stooqの手順は2026年4月時点の記事に基づくもので、変わっている可能性があります。</p>
+ </details>
+</section>
+
+<section id="game" hidden>
+ <div class="end" id="end" hidden></div>
+ <div><span class="day" id="day"></span> <span class="clock" id="clock"></span> <span class="sub" id="prog"></span></div>
+ <div class="bar">
+  <button class="p" id="bplay" onclick="toggle()">▶ 再生</button>
+  <button id="bskip" onclick="skipDay()">▶▶ 次の引けまで</button>
+  <select id="spd" onchange="setSpeed(this.value)">
+   <option value="1200">速度：遅い</option><option value="600">速度：普通</option>
+   <option value="250">速度：速い</option><option value="80">速度：超高速</option>
+  </select>
+  <label class="sub"><input type="checkbox" id="ac" onchange="G.ac=this.checked;saveG()"> 大引けで全決済</label>
+ </div>
+ <div class="bar"><span class="sub">グラフ</span><button id="cm_day" class="on" onclick="setCm('day')">日中</button><button id="cm_hist" onclick="setCm('hist')">直近30日</button></div>
+ <div class="sum">
+  <div class="box"><small>総資産</small><b id="tot"></b></div>
+  <div class="box"><small>現金</small><b id="cash"></b></div>
+  <div class="box"><small>損益</small><b id="pl"></b></div>
+ </div>
+ <div class="sub" id="bench"></div>
+ <div class="sub" id="alloc"></div>
+ <div class="msg" id="msg"></div>
+ <div id="list"></div>
+ <div class="bar">
+  <button onclick="arm(this,'もう一度押すと確定',restart)">最初からやり直す</button>
+  <button onclick="arm(this,'もう一度押すと確定',newData)">データを入れ替える</button>
+ </div>
+</section>
+
+<p class="note">過去の実データをもとにしたゲームです。日中の動きは、その日の始値・高値・安値・終値（これらが無いCSVでは終値のみから補って）作った疑似的な動きで、実際の分足ではありません。売買はすべて架空で、投資の助言ではありません。データの利用条件は取得元の規約に従ってください。</p>
+</main>
+<script>
+const START=10000000,T=26; // 1日=15分刻み26区間（9:00→15:30）
+const NAMES={"7203":"トヨタ自動車","6758":"ソニーグループ","7974":"任天堂","9984":"ソフトバンクG","6861":"キーエンス","9983":"ファーストリテイリング","8306":"三菱UFJ","8035":"東京エレクトロン","9432":"NTT","6501":"日立製作所","7267":"ホンダ","4063":"信越化学"};
+const WD="日月火水木金土";
+const yen=x=>"¥"+Math.round(x).toLocaleString("ja-JP");
+const pr=x=>"¥"+x.toLocaleString("ja-JP",{maximumFractionDigits:1});
+const pct=x=>(x>=0?"+":"")+x.toFixed(2)+"%";
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const $=id=>document.getElementById(id);
+let D=null,G=null,pending=[],tm=null;
+const PC=new Map();
+
+try{
+ const d=JSON.parse(localStorage.getItem("sgr2d")||"null"),g=JSON.parse(localStorage.getItem("sgr2g")||"null");
+ if(d&&g&&d.o&&g.i!==undefined){D=d;G=g}
+}catch(e){}
+const saveD=()=>{try{localStorage.setItem("sgr2d",JSON.stringify(D))}catch(e){}};
+const saveG=()=>{try{localStorage.setItem("sgr2g",JSON.stringify(G))}catch(e){}};
+
+/* ---------- CSV ---------- */
+function parseCsv(t){
+ const L=t.replace(/^\uFEFF/,"").split(/\r?\n/).filter(x=>x.trim());
+ if(L.length<2)throw new Error("データ行がありません");
+ const sep=L[0].includes("\t")?"\t":",";
+ const H=L[0].split(sep).map(x=>x.replace(/["<>\s]/g,"").toLowerCase());
+ const f=(...n)=>H.findIndex(h=>n.includes(h));
+ const di=f("date","日付"),ci=f("close","終値"),oi=f("open","始値"),hi=f("high","高値"),li=f("low","安値");
+ if(di<0||ci<0)throw new Error("Date（日付）列とClose（終値）列が見つかりません");
+ const m=new Map();
+ const num=(c,i)=>i<0?NaN:parseFloat((c[i]||"").replace(/,/g,""));
+ for(let k=1;k<L.length;k++){
+  const c=L[k].split(sep).map(x=>x.replace(/"/g,"").trim());
+  let d=c[di];if(!d)continue;
+  d=d.replace(/[\/.年月]/g,"-").replace(/日$/,"");
+  if(/^\d{8}$/.test(d))d=d.slice(0,4)+"-"+d.slice(4,6)+"-"+d.slice(6);
+  const mm=d.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);if(!mm)continue;
+  d=`${mm[1]}-${mm[2].padStart(2,"0")}-${mm[3].padStart(2,"0")}`;
+  const cl=num(c,ci);if(!(cl>0))continue;
+  m.set(d,{o:num(c,oi),h:num(c,hi),l:num(c,li),c:cl});
+ }
+ if(m.size<30)throw new Error("有効な行が30件未満です（"+m.size+"件）");
+ return m;
+}
+async function onFiles(fl){
+ pending=[];const errs=[];
+ for(const f of fl){
+  try{
+   const base=f.name.replace(/\.[^.]*$/,"");
+   const code=(base.match(/[0-9]{3}[0-9A-Za-z]/)||[base])[0].toUpperCase();
+   pending.push({name:NAMES[code]||base,code,map:parseCsv(await f.text())});
+  }catch(e){errs.push(f.name+"："+e.message)}
+ }
+ $("flist").innerHTML=pending.map(s=>`<li>${esc(s.name)}（${s.map.size}日分）</li>`).join("");
+ say("lmsg",errs.join(" / "),!!errs.length);
+ build();
+}
+function build(){
+ if(!pending.length){$("startbox").hidden=true;return}
+ const dates=[...pending[0].map.keys()].filter(d=>pending.every(s=>s.map.has(d))).sort();
+ if(dates.length<30){say("lmsg","全銘柄に共通する日付が30日未満です。期間が重なるCSVを選んでください。",true);$("startbox").hidden=true;return}
+ const o=[],h=[],l=[],c=[];
+ pending.forEach(s=>{
+  const O=[],H=[],Lw=[],C=[];let prev=null;
+  dates.forEach(d=>{
+   const e=s.map.get(d),cl=e.c,op=isFinite(e.o)&&e.o>0?e.o:(prev??cl);
+   let hi=isFinite(e.h)&&e.h>0?e.h:Math.max(op,cl)*1.003,lo=isFinite(e.l)&&e.l>0?e.l:Math.min(op,cl)*.997;
+   hi=Math.max(hi,op,cl);lo=Math.min(lo,op,cl);
+   O.push(op);H.push(hi);Lw.push(lo);C.push(cl);prev=cl;
+  });
+  o.push(O);h.push(H);l.push(Lw);c.push(C);
+ });
+ D={names:pending.map(s=>s.name),codes:pending.map(s=>s.code),dates,o,h,l,c};
+ PC.clear();
+ const lastStart=Math.max(0,dates.length-5),sd=$("sd");
+ sd.min=dates[0];sd.max=dates[lastStart];sd.value=dates[Math.min(30,lastStart)];
+ $("range").textContent=`共通期間 ${dates[0]} 〜 ${dates[dates.length-1]}（${dates.length}営業日）`;
+ $("startbox").hidden=false;
+}
+function demo(){
+ pending=[];const nm=["デモA（架空）","デモB（架空）","デモC（架空）","デモD（架空）"];
+ const dates=[];let d=new Date(2023,0,2);
+ while(dates.length<300){if(d.getDay()%6)dates.push(d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"));d.setDate(d.getDate()+1)}
+ nm.forEach((n,k)=>{let p=1000+k*1500;const m=new Map();
+  dates.forEach(x=>{const o=p;let u=0;for(let j=0;j<6;j++)u+=Math.random();
+   p=Math.max(50,p*(1+(u-3)*(.012+k*.004)+.0003));
+   m.set(x,{o:Math.round(o),c:Math.round(p),h:Math.round(Math.max(o,p)*(1+Math.random()*.012)),l:Math.round(Math.min(o,p)*(1-Math.random()*.012))})});
+  pending.push({name:n,code:"DEMO"+k,map:m})});
+ $("flist").innerHTML=pending.map(s=>`<li>${esc(s.name)}</li>`).join("");
+ say("lmsg","デモ用の架空データです（実際の株価ではありません）。");build();
+}
+
+/* ---------- 日中の疑似的な値動き ---------- */
+function rng(seed){return function(){seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function path(k,i){
+ const key=k*100000+i;if(PC.has(key))return PC.get(key);
+ const o=D.o[k][i],h=D.h[k][i],l=D.l[k][i],c=D.c[k][i],r=rng(k*100003+i*7919+13),P=new Array(T+1);
+ if(h-l<1e-9){P.fill(o);P[T]=c}
+ else{
+  const th=1+Math.floor(r()*(T-1));let tl=1+Math.floor(r()*(T-1));if(tl===th)tl=th<T-1?th+1:th-1;
+  const wp=th<tl?[[0,o],[th,h],[tl,l],[T,c]]:[[0,o],[tl,l],[th,h],[T,c]];
+  for(let w=0;w<3;w++){
+   const [t0,v0]=wp[w],[t1,v1]=wp[w+1];
+   for(let t=t0;t<=t1;t++){
+    const f=(t-t0)/(t1-t0);let v=v0+(v1-v0)*f;
+    if(t!==t0&&t!==t1)v+=(r()-.5)*2*(h-l)*.12*Math.sin(Math.PI*f);
+    P[t]=Math.round(Math.min(h,Math.max(l,v))*10)/10;
+   }
+  }
+  P[0]=o;P[T]=c;
+ }
+ PC.set(key,P);return P;
+}
+const price=k=>path(k,G.i)[G.j];
+const lastI=()=>D.dates.length-1;
+const atEnd=()=>G.i>=lastI()&&G.j>=T;
+const clockStr=j=>{const m=9*60+15*j;return String(Math.floor(m/60))+":"+String(m%60).padStart(2,"0")};
+
+/* ---------- ゲーム進行 ---------- */
+function startGame(){
+ if(!D)return;
+ let i=D.dates.findIndex(x=>x>=$("sd").value);if(i<0)i=0;
+ newG(i);saveD();show();
+}
+function newG(i){G={i,j:0,s:i,cash:START,st:D.names.map(()=>({q:0,cost:0})),speed:600,ac:false};saveG()}
+function restart(){stop();newG(G.s);show()}
+function newData(){stop();D=null;G=null;pending=[];PC.clear();
+ try{localStorage.removeItem("sgr2d");localStorage.removeItem("sgr2g")}catch(e){}
+ $("flist").innerHTML="";$("startbox").hidden=true;$("files").value="";say("lmsg","");show()}
+function arm(btn,label,fn){
+ if(btn.dataset.armed){clearTimeout(btn._t);delete btn.dataset.armed;btn.textContent=btn.dataset.orig;fn();return}
+ btn.dataset.orig=btn.textContent;btn.dataset.armed="1";btn.textContent=label;
+ btn._t=setTimeout(()=>{delete btn.dataset.armed;btn.textContent=btn.dataset.orig},4000);
+}
+function liquidate(){
+ let n=0;D.names.forEach((_,k)=>{const s=G.st[k];if(s.q){G.cash+=s.q*price(k);s.q=0;s.cost=0;n++}});
+ if(n)say("msg","大引けで全ポジションを決済しました。");
+}
+function tick(){
+ if(atEnd()){stop();updateAll();return}
+ if(G.j<T)G.j++;else{G.i++;G.j=0}
+ if(G.j===T&&G.ac)liquidate();
+ saveG();updateAll();
+ if(atEnd())stop();
+}
+function skipDay(){
+ if(atEnd())return;
+ if(G.j<T)G.j=T;else{G.i++;G.j=T}
+ if(G.ac)liquidate();
+ saveG();updateAll();
+}
+function start(){if(atEnd())return;stop();G.auto=true;tm=setInterval(tick,G.speed);setPlay()}
+function stop(){clearInterval(tm);tm=null;if(G)G.auto=false;setPlay()}
+function toggle(){tm?stop():start()}
+function setSpeed(v){G.speed=+v;saveG();if(tm)start()}
+function setPlay(){const b=$("bplay");if(b)b.textContent=tm?"⏸ 一時停止":"▶ 再生"}
+
+function qty(k){return +$("q"+k).value||0}
+function buy(k){const q=qty(k);if(q<=0||atEnd()&&false)return;const p=price(k),c=q*p;
+ if(c>G.cash){say("msg","現金が足りません。",true);return}
+ G.cash-=c;G.st[k].q+=q;G.st[k].cost+=c;saveG();updateAll();say("msg",`${D.names[k]}を${q}株購入（${pr(p)}）`)}
+function sell(k){const s=G.st[k],q=Math.min(qty(k),s.q);if(q<=0)return;const p=price(k);
+ const avg=s.cost/s.q;G.cash+=q*p;s.cost-=avg*q;s.q-=q;if(!s.q)s.cost=0;saveG();updateAll();say("msg",`${D.names[k]}を${q}株売却（${pr(p)}）`)}
+function say(id,t,err){const m=$(id);if(!m)return;m.textContent=t;m.className="msg"+(err?" err":"")}
+
+/* ---------- 表示 ---------- */
+function spark(h){
+ if(h.length<2)return'<svg viewBox="0 0 110 34"></svg>';
+ const mn=Math.min(...h),mx=Math.max(...h);
+ const pts=h.map((v,i)=>(i/(h.length-1)*110).toFixed(1)+","+(32-(mx===mn?.5:(v-mn)/(mx-mn))*30).toFixed(1)).join(" ");
+ return`<svg viewBox="0 0 110 34"><polyline fill="none" stroke="var(${h[h.length-1]>=h[0]?"--up":"--dn"})" stroke-width="2" points="${pts}"/></svg>`;
+}
+function setCm(m){G.cm=m;saveG();syncCm();updateAll()}
+function syncCm(){$("cm_day").className=G.cm==="hist"?"":"on";$("cm_hist").className=G.cm==="hist"?"on":""}
+function setQ(k,m){
+ const p=price(k),s=G.st[k];let q;
+ if(m==="lot")q=100;else if(m==="all")q=s.q;else q=Math.floor(G.cash*m/p/100)*100;
+ $("q"+k).value=Math.max(0,q);updateAll();
+}
+function chart(k,p,pa){
+ const W=600,H=170,L=8,R=62,Tp=12,B=22,cw=W-L-R,chh=H-Tp-B,s=G.st[k],avg=s.q?s.cost/s.q:null;
+ let ys,xs,xl,ref=null;
+ if(G.cm==="hist"){
+  ys=D.c[k].slice(Math.max(0,G.i-29),G.i).concat([p]);
+  xs=i=>L+cw*(ys.length<2?0:i/(ys.length-1));
+  xl=[[0,D.dates[Math.max(0,G.i-29)].slice(5)],[1,D.dates[G.i].slice(5)]];
+ }else{
+  ys=pa;ref=G.i>0?D.c[k][G.i-1]:D.o[k][G.i];
+  xs=i=>L+cw*i/T;
+  xl=[[0,"9:00"],[12/T,"12:00"],[1,"15:30"]];
+ }
+ const vals=ys.slice();if(ref!==null)vals.push(ref);if(avg!==null)vals.push(avg);
+ const mn=Math.min(...vals),mx=Math.max(...vals),pad=(mx-mn)*.12||mx*.005,lo=mn-pad,hi=mx+pad;
+ const yv=v=>Tp+chh*(1-(v-lo)/(hi-lo)),fmt=v=>v.toLocaleString("ja-JP",{maximumFractionDigits:v>=1000?0:1});
+ const base=ref!==null?ref:ys[0],col=`var(${p>=base?"--up":"--dn"})`;
+ const pts=ys.map((v,i)=>xs(i).toFixed(1)+","+yv(v).toFixed(1));
+ const bot=(Tp+chh).toFixed(1);
+ const xe=xs(ys.length-1).toFixed(1);
+ let g=`<line x1="${L}" x2="${L+cw}" y1="${bot}" y2="${bot}" stroke="var(--bd)"/>`;
+ [mx,mn].forEach(v=>{g+=`<line x1="${L}" x2="${L+cw}" y1="${yv(v).toFixed(1)}" y2="${yv(v).toFixed(1)}" stroke="var(--bd)" stroke-dasharray="2 3"/><text x="${L+cw+4}" y="${(yv(v)+3).toFixed(1)}" font-size="10" fill="var(--sub)">${fmt(v)}</text>`});
+ if(ref!==null)g+=`<line x1="${L}" x2="${L+cw}" y1="${yv(ref).toFixed(1)}" y2="${yv(ref).toFixed(1)}" stroke="var(--sub)" stroke-dasharray="5 4"/><text x="${L+4}" y="${(yv(ref)-3).toFixed(1)}" font-size="10" fill="var(--sub)">前日終値 ${fmt(ref)}</text>`;
+ if(avg!==null)g+=`<line x1="${L}" x2="${L+cw}" y1="${yv(avg).toFixed(1)}" y2="${yv(avg).toFixed(1)}" stroke="#d99a00" stroke-width="1.5" stroke-dasharray="6 3"/><text x="${L+4}" y="${(yv(avg)-3).toFixed(1)}" font-size="10" fill="#d99a00">取得単価 ${fmt(avg)}</text>`;
+ g+=`<path d="M${xs(0).toFixed(1)},${bot} L${pts.join(" L")} L${xe},${bot} Z" fill="${col}" fill-opacity=".12"/>`;
+ g+=`<polyline fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round" points="${pts.join(" ")}"/>`;
+ const cy=yv(p);
+ g+=`<circle cx="${xe}" cy="${cy.toFixed(1)}" r="3.5" fill="${col}"/><rect x="${L+cw+2}" y="${(cy-8).toFixed(1)}" width="${R-4}" height="16" rx="4" fill="${col}"/><text x="${L+cw+2+(R-4)/2}" y="${(cy+3.5).toFixed(1)}" font-size="10.5" font-weight="700" fill="#fff" text-anchor="middle">${fmt(p)}</text>`;
+ xl.forEach(([f,t])=>{g+=`<text x="${(L+cw*f).toFixed(1)}" y="${H-5}" font-size="10" fill="var(--sub)" text-anchor="${f===0?"start":f===1?"end":"middle"}">${t}</text>`});
+ return`<svg class="ch" viewBox="0 0 ${W} ${H}">${g}</svg>`;
+}
+
+function show(){
+ const g=!!(D&&G);$("load").hidden=g;$("game").hidden=!g;
+ if(!g)return;
+ $("spd").value=String(G.speed||600);$("ac").checked=!!G.ac;syncCm();
+ $("list").innerHTML=D.names.map((n,k)=>`<div class="st">
+  <div class="nm">${esc(n)} <span class="sub">${esc(D.codes[k])}</span></div>
+  <div><b id="p${k}" style="font-size:20px"></b> <span id="c${k}"></span></div>
+  <div class="sub" id="r${k}"></div>
+  <div id="s${k}"></div>
+  <div class="sub" style="margin-top:6px" id="pos${k}"></div>
+  <div class="sub" id="can${k}"></div>
+  <div class="r2" style="flex-wrap:wrap"><input class="q" id="q${k}" type="number" min="1" step="100" value="100" oninput="updateAll()"><span class="sub">株</span>
+   <button class="sm" onclick="setQ(${k},'lot')">1単元</button><button class="sm" onclick="setQ(${k},.25)">資金の25%</button><button class="sm" onclick="setQ(${k},.5)">50%</button><button class="sm" onclick="setQ(${k},1)">最大</button><button class="sm" onclick="setQ(${k},'all')">全株</button></div>
+  <div class="pv" id="pv${k}"></div>
+  <div class="r2"><button class="p" onclick="buy(${k})">買う</button><button onclick="sell(${k})">売る</button></div></div>`).join("");
+ stop();updateAll();
+}
+function updateAll(){
+ const dt=D.dates[G.i],wd=WD[new Date(dt+"T00:00:00").getDay()];
+ $("day").textContent=`${dt}（${wd}）`;
+ $("clock").textContent=G.j>=T?"15:30 大引け":clockStr(G.j);
+ $("prog").textContent=`${G.i-G.s+1}日目／全${lastI()-G.s+1}日`;
+ let hold=0,bh=0;
+ D.names.forEach((_,k)=>{
+  const p=price(k),s=G.st[k];hold+=s.q*p;bh+=p/D.o[k][G.s]-1;
+  const prev=G.i>0?D.c[k][G.i-1]:D.o[k][G.i],ch=(p/prev-1)*100,pa=path(k,G.i).slice(0,G.j+1);
+  $("p"+k).textContent=pr(p);
+  const ce=$("c"+k);ce.textContent=pct(ch)+" (前日終値比)";ce.className=ch>=0?"up":"dn";
+  $("r"+k).textContent=`始値 ${pr(D.o[k][G.i])}／ここまでの高値 ${pr(Math.max(...pa))}・安値 ${pr(Math.min(...pa))}`;
+  $("s"+k).innerHTML=chart(k,p,pa);
+  const maxQ=Math.floor(G.cash/p/100)*100,q=qty(k),cost=q*p;
+  $("can"+k).textContent=maxQ>0?`今の現金で買える：最大 ${maxQ.toLocaleString()}株（${maxQ/100}単元）／1単元 ${yen(p*100)}`:`今の現金では1単元（${yen(p*100)}）も買えません`;
+  $("pv"+k).innerHTML=q>0?`この数量：${yen(cost)}。買うと現金は ${yen(G.cash-cost)}${G.cash-cost<0?' <span class="up">（足りません）</span>':""}${s.q?`／売ると +${yen(Math.min(q,s.q)*p)}`:""}`:"";
+  $("pos"+k).innerHTML=s.q?`保有 ${s.q}株／平均 ${pr(s.cost/s.q)}／評価損益 <span class="${p*s.q-s.cost>=0?"up":"dn"}">${yen(p*s.q-s.cost)}</span>`:"未保有";
+ });
+ bh=bh/D.names.length*100;
+ const tot=G.cash+hold,pl=tot-START,e=$("pl");
+ $("tot").textContent=yen(tot);$("cash").textContent=yen(G.cash);
+ $("alloc").textContent=`資産配分：現金 ${(G.cash/tot*100).toFixed(0)}%／株式 ${(hold/tot*100).toFixed(0)}%`;
+ e.textContent=yen(pl)+"（"+pct(pl/START*100)+"）";e.className=pl>=0?"up":"dn";
+ $("bench").textContent=`参考：開始日の始値で全銘柄に均等に買って持ち続けた場合 ${pct(bh)}`;
+ const fin=atEnd();$("bskip").disabled=fin;$("bplay").disabled=fin;
+ const en=$("end");en.hidden=!fin;
+ if(fin)en.innerHTML=`<b>ゲーム終了！</b> 最終資産 ${yen(tot)}（${pct(pl/START*100)}）。持ち続けた場合（${pct(bh)}）に${pl/START*100>bh?"勝ちました 🎉":"届きませんでした"}。`;
+}
+show();
+</script>
+</body>
+</html>
